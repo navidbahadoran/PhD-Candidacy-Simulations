@@ -37,3 +37,8 @@ python sim4_pc_scores.py
 python sim5_inverse_covariance.py
 python sim6_discriminant_application.py
 ```
+
+
+### Chapter 2 add-ons
+0. **sim0_mp_law.py** — Marchenko–Pastur (MP) law: histogram of eigenvalues vs. MP density and edge checks.
+0. **sim0_bbp_transition.py** — BBP phase transition: spiked covariance outlier location and eigenvector alignment vs. theory.
