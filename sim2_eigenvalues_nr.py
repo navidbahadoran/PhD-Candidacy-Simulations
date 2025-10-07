@@ -1,48 +1,32 @@
-"""
-sim2_eigenvalues_nr.py — Eigenvalue bias and NR correction (Section 3.5).
+import numpy as np, matplotlib.pyplot as plt, os
 
-Compares naive sample eigenvalues of S_D with noise-reduced tilde λ_j.
-Varies spike exponent α and sample size n.
-"""
-import numpy as np
-import matplotlib.pyplot as plt
-from common import SpikedModel, generate_data, dual_cov, nr_eigenvalues, set_seed
+def dual_cov(X):
+    n = X.shape[1]; return (X.T @ X)/n
 
-def one_run(p=5000, n=50, m=2, alphas=(0.8, 0.6), a=(1.0, 1.0), bulk=1.0, kind="gaussian", seed=1):
-    set_seed(seed)
-    model = SpikedModel(p=p, n=n, m=m, alphas=np.array(alphas), a=np.array(a), c_bulk=bulk)
-    X, lam, H = generate_data(model, kind=kind)
+def nr_lambda(hat_lams, j):
+    n = len(hat_lams)
+    bulk_mean = (hat_lams[j+1:].sum())/(n-j) if j < n-1 else 0.0
+    return hat_lams[j] - bulk_mean
+
+def run(p=3000, n=60, alphas=(0.8,0.6), kplot=10, seed=0, prefix="figures/sim2_eigs"):
+    rng = np.random.default_rng(seed)
+    lam = np.ones(p)
+    for idx, a in enumerate(alphas): lam[idx] = p**a
+    Z = rng.standard_normal((p, n)); X = (np.sqrt(lam)[:,None] * Z)
     SD = dual_cov(X)
-    evals, U = np.linalg.eigh(SD)
-    evals = evals[::-1]
-
-    tilde = []
-    n_e = evals.size
-    for j in range(n_e-1):
-        mu_hat = (evals[j+1:].sum()) / (n_e - (j+1))
-        tilde.append(max(evals[j] - mu_hat, 0.0))
-    tilde.append(max(evals[-1], 0.0))
-    tilde = np.array(tilde)
-
-    lam_sig = lam[:m]
-    print(f"[sim2] p={p} n={n} alphas={alphas} lam1={lam_sig[0]:.2e}")
-    for j in range(m):
-        print(f"  j={j+1}: naive_ratio={evals[j]/lam_sig[j]:.3f}, NR_ratio={tilde[j]/lam_sig[j]:.3f}")
-
-    # Plot top-10 naive vs NR
-    import os
+    hat_lams = np.linalg.eigvalsh(SD)[::-1]
+    tilde = np.array([nr_lambda(hat_lams, j) for j in range(n-1)] + [0.0])
+    mu = lam[len(alphas):].mean() if len(alphas)<p else 0.0
+    true_approx = np.array([lam[j] + mu if j < len(alphas) else mu for j in range(n)])
     os.makedirs("figures", exist_ok=True)
-    k = min(10, n)
-    plt.figure()
-    x = np.arange(1, k+1)
-    plt.plot(x, evals[:k], marker="o", label="naïve eigs")
-    plt.plot(x, tilde[:k], marker="x", label="NR eigs")
-    plt.title("Top eigenvalues: naïve vs noise-reduced")
-    plt.xlabel("index"); plt.ylabel("value")
-    plt.legend()
-    plt.savefig("figures/sim2_eigs.png", dpi=120, bbox_inches="tight")
-    plt.close()
+    jidx = np.arange(1, kplot+1)
+    plt.figure(figsize=(6.4,4.2))
+    plt.plot(jidx, hat_lams[:kplot], "o-", label=r"$\hat\lambda_j$ (naïve)")
+    plt.plot(jidx, tilde[:kplot], "x-", label=r"$\tilde\lambda_j$ (NR)")
+    plt.plot(jidx, true_approx[:kplot], "--", label="truth (approx)")
+    plt.xlabel("component j"); plt.ylabel("eigenvalue"); plt.legend(frameon=False)
+    plt.title(f"NR vs naïve eigenvalues (p={p}, n={n})")
+    plt.tight_layout(); plt.savefig(prefix+".pdf", bbox_inches="tight"); plt.close()
 
 if __name__ == "__main__":
-    one_run(p=5000, n=50, m=2, alphas=(0.8, 0.6), a=(1.0, 1.0), kind="gaussian", seed=7)
-    one_run(p=5000, n=30, m=2, alphas=(0.6, 0.55), a=(1.0, 1.0), kind="gaussian", seed=8)
+    run()

@@ -1,74 +1,50 @@
-"""
-sim6_discriminant_application.py — Discriminant analysis demo (Section 8-style application).
+import numpy as np, matplotlib.pyplot as plt, os
 
-Two Gaussian classes in HDLSS. Compare classification with:
-- S^{-1}_ω (NR-based inverse estimator)
-- Moore–Penrose inverse of S (pseudo-inverse)
-- Ridge inverse (S + δI)^{-1} with δ = tr(S)/n
-
-Reports test error rates.
-"""
-import numpy as np
-from numpy.linalg import pinv
-from common import SpikedModel, generate_data, dual_cov, inverse_nr_estimator, set_seed
-
-def sample_two_class(model_pos, model_neg, n_test=200, seed=50):
-    set_seed(seed)
-    Xp, lam_p, H = generate_data(model_pos, kind="gaussian")
-    Xn, lam_n, H = generate_data(model_neg, kind="gaussian")
-    # class means shifted along first PC of pos class
-    mu = np.zeros(model_pos.p)
-    mu[0] = 2.0  # signal in class separation
-    Xp = Xp + mu[:, None]
-    Xn = Xn - mu[:, None]
-    # Train pooled covariance on combined training data (centered by class means)
-    X_train = np.hstack([Xp, Xn])
-    y_train = np.array([1]*model_pos.n + [0]*model_neg.n)
-    mu_p = Xp.mean(axis=1, keepdims=True)
-    mu_n = Xn.mean(axis=1, keepdims=True)
-    Xc = np.hstack([Xp - mu_p, Xn - mu_n])
-    S = (Xc @ Xc.T) / Xc.shape[1]
-
-    # Estimators
-    # 1) NR-based inverse
-    Soinv, aux = inverse_nr_estimator(Xc)
-    # 2) Moore–Penrose
-    S_pinv = pinv(S)
-    # 3) Ridge
-    delta = np.trace(S) / Xc.shape[1]
-    S_ridge_inv = np.linalg.inv(S + delta*np.eye(model_pos.p))
-
-    # LDA-like rule with given inverse: w = Sinv (mu_p - mu_n)
-    w_nr = Soinv @ ((mu_p - mu_n).ravel())
-    w_pinv = S_pinv @ ((mu_p - mu_n).ravel())
-    w_ridge = S_ridge_inv @ ((mu_p - mu_n).ravel())
-
-    # Test data
-    def draw(model, mshift, n_draw):
-        X, _, _ = generate_data(model, kind="gaussian")
-        return (X + mshift[:, None])[:, :n_draw]
-
-    Xt_pos = draw(model_pos, mu.ravel(), n_test//2)
-    Xt_neg = draw(model_neg, -mu.ravel(), n_test//2)
-    X_test = np.hstack([Xt_pos, Xt_neg])
-    y_test = np.array([1]*(n_test//2) + [0]*(n_test//2))
-
-    def err(w):
-        scores = w @ (X_test - 0.5*(mu_p + mu_n))
-        yhat = (scores > 0).astype(int)
-        return (yhat != y_test).mean()
-
-    e_nr = err(w_nr)
-    e_pinv = err(w_pinv)
-    e_ridge = err(w_ridge)
-
-    print(f"[sim6] Test error rates (smaller is better):")
-    print(f"  NR inverse     : {e_nr:.3f}")
-    print(f"  Moore–Penrose  : {e_pinv:.3f}")
-    print(f"  Ridge inverse  : {e_ridge:.3f}  (δ = tr(S)/n)")
+def run(p=2000, n1=20, n2=20, reps=50, alpha=0.7, seed=42, fname="figures/sim6_discriminant.pdf"):
+    rng = np.random.default_rng(seed)
+    lam = np.ones(p); lam[0]=p**alpha
+    h1 = np.zeros(p); h1[0]=1.0
+    d = 1.0
+    mu1 = np.zeros(p); mu2 = d*h1
+    errs_mp=[]; errs_ridge=[]; errs_nr=[]
+    for _ in range(reps):
+        Z1 = rng.standard_normal((p,n1)); X1 = (np.sqrt(lam)[:,None]*Z1) + mu1[:,None]
+        Z2 = rng.standard_normal((p,n2)); X2 = (np.sqrt(lam)[:,None]*Z2) + mu2[:,None]
+        X = np.concatenate([X1, X2], axis=1); y = np.array([0]*n1 + [1]*n2)
+        m1 = X1.mean(axis=1); m2 = X2.mean(axis=1)
+        S = (X - X.mean(axis=1, keepdims=True)) @ (X - X.mean(axis=1, keepdims=True)).T / (n1+n2-1)
+        # MP
+        U, s, Vt = np.linalg.svd(S, full_matrices=False)
+        Sinv_mp = (U * (1.0/np.where(s>1e-8, s, np.inf))) @ U.T
+        # ridge
+        delta = np.mean(lam)/(n1+n2)
+        Sinv_r = np.linalg.inv(S + delta*np.eye(p))
+        # NR (approx via dual)
+        SD = (X.T @ X)/(n1+n2)
+        evals, Udual = np.linalg.eigh(SD); idx=np.argsort(evals)[::-1]; evals=evals[idx]; Udual=Udual[:,idx]
+        tilde = np.zeros_like(evals); n = n1+n2
+        for j in range(n-1): tilde[j] = evals[j] - evals[j+1:].sum()/(n-j)
+        omega = min(np.mean(lam)/np.sqrt(n), np.mean(lam)/n)
+        lam_bar = np.maximum(tilde, omega)
+        Hhat = (X @ Udual) / np.sqrt(n*evals + 1e-12)
+        P = Hhat @ Hhat.T
+        Sinv_nr = Hhat @ np.diag(1.0/lam_bar) @ Hhat.T + (np.eye(p)-P) * (1.0/omega)
+        # LDA-like scores
+        def err_rate(Sinv):
+            w = Sinv @ (m2-m1); b = -0.5*(m1+m2).T@w
+            scores = w.T @ X + b
+            yhat = (scores>0).astype(int)
+            return np.mean(yhat!=y)
+        errs_mp.append(err_rate(Sinv_mp))
+        errs_ridge.append(err_rate(Sinv_r))
+        errs_nr.append(err_rate(Sinv_nr))
+    means = [np.mean(errs_mp), np.mean(errs_ridge), np.mean(errs_nr)]
+    os.makedirs("figures", exist_ok=True)
+    plt.figure(figsize=(5.6,3.8))
+    plt.bar(["MP","Ridge","NR"], means)
+    plt.ylabel("misclassification rate")
+    plt.title(f"HDLSS LDA (p={p}, n1=n2={n1}, α={alpha})")
+    plt.tight_layout(); plt.savefig(fname, bbox_inches="tight"); plt.close()
 
 if __name__ == "__main__":
-    p, n = 4000, 40
-    model_pos = SpikedModel(p=p, n=n, m=2, alphas=np.array([0.8, 0.6]), a=np.array([1.0, 1.0]), c_bulk=1.0)
-    model_neg = SpikedModel(p=p, n=n, m=2, alphas=np.array([0.8, 0.6]), a=np.array([1.0, 1.0]), c_bulk=1.0)
-    sample_two_class(model_pos, model_neg, n_test=200, seed=55)
+    run()

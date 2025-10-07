@@ -1,36 +1,27 @@
-"""
-sim3_pc_directions.py — PC direction consistency (Section 3.6).
+import numpy as np, matplotlib.pyplot as plt, os
 
-Measures angle between sample PC direction \hat h_j and population h_j.
-"""
-import numpy as np
-import matplotlib.pyplot as plt
-from numpy.linalg import norm
-from common import SpikedModel, generate_data, dual_cov, set_seed, angle
+def angle_between(u, v):
+    c = abs(float(u.T @ v)); c = max(min(c,1.0), -1.0); return np.arccos(c)
 
-def angle_experiment(p=4000, n_list=(20, 40, 80), alpha=0.8, j=1, reps=10, seed=10):
-    angles = []
-    for n in n_list:
-        vals = []
-        for r in range(reps):
-            set_seed(seed + 100*r + n)
-            model = SpikedModel(p=p, n=n, m=1, alphas=np.array([alpha]), a=np.array([1.0]), c_bulk=1.0)
-            X, lam, H = generate_data(model, kind="gaussian")
-            SD = dual_cov(X)
-            evals, U = np.linalg.eigh(SD)
-            U = U[:, ::-1]
-            uh = U[:, j-1]
-            # primal direction
-            h = np.zeros(p); h[0] = 1.0  # since H=I
-            # map dual eigenvector to primal PC: \hat h_j = X \hat u_j / sqrt(n \hat λ_j)
-            lam_hat = np.sort(evals)[::-1][j-1]
-            hhat = (X @ uh) / np.sqrt(n * lam_hat + 1e-12)
-            vals.append(angle(hhat, h))
-        angles.append((n, np.mean(vals), np.std(vals)))
-    return angles
+def run(p=3000, alpha=0.7, n_vals=(10,20,40,80,120,200), reps=30, seed=0, fname="figures/sim3_pc_angles.pdf"):
+    rng = np.random.default_rng(seed)
+    lam = np.ones(p); lam[0] = p**alpha
+    means = []
+    for n in n_vals:
+        angs = []
+        for _ in range(reps):
+            Z = rng.standard_normal((p, n)); X = (np.sqrt(lam)[:,None] * Z)
+            S = (X @ X.T)/n
+            evals, vecs = np.linalg.eigh(S)
+            vhat = vecs[:, -1]; h1 = np.zeros(p); h1[0]=1.0
+            angs.append(angle_between(vhat, h1))
+        means.append(np.mean(angs))
+    os.makedirs("figures", exist_ok=True)
+    plt.figure(figsize=(6.0,4.0))
+    plt.plot(n_vals, means, "o-")
+    plt.xlabel("sample size n"); plt.ylabel("mean angle (radians)")
+    plt.title(f"PC1 angle vs n (p={p}, α={alpha})")
+    plt.tight_layout(); plt.savefig(fname, bbox_inches="tight"); plt.close()
 
 if __name__ == "__main__":
-    res = angle_experiment(p=4000, n_list=(20, 40, 80, 120), alpha=0.8, j=1, reps=8, seed=11)
-    print("[sim3] Angle(ĥ, h): mean±std (radians)")
-    for n, mu, sd in res:
-        print(f"  n={n:3d} -> {mu:.3f} ± {sd:.3f}")
+    run()
