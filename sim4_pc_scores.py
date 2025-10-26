@@ -27,7 +27,7 @@ def run(p=3000, alpha=0.7, n_vals=(20,40,80,120,200), reps=30, seed=1, fname="fi
         nmse_naive.append(np.mean(errs_naive)); nmse_nr.append(np.mean(errs_nr))
     os.makedirs("figures", exist_ok=True)
     plt.figure(figsize=(6.0,4.0))
-    plt.plot(n_vals, nmse_naive, "o-", label="naïve")
+    plt.plot(n_vals, nmse_naive, "o-", label="naive")
     plt.plot(n_vals, nmse_nr, "x-", label="NR")
     plt.xlabel("sample size n"); plt.ylabel("NMSE (component 1)")
     plt.title(f"PC score NMSE vs n (p={p}, α={alpha})")

@@ -6,9 +6,11 @@ def mp_pdf(x, gamma):
     y = np.zeros_like(x, dtype=float)
     mask = (x >= a) & (x <= b)
     y[mask] = np.sqrt((b - x[mask]) * (x[mask] - a)) / (2.0 * np.pi * gamma * x[mask])
+    if gamma>1:
+        y[0]=1-(1/gamma)
     return y, a, b
 
-def run(p=2000, n=1000, seed=123, fname="figures/sim0_mp_law.pdf"):
+def run(p=2000, n=1000, seed=123, fname="./figures/sim0_mp_law.pdf"):
     rng = np.random.default_rng(seed)
     X = rng.standard_normal((p, n))
     S = (X @ X.T) / n
@@ -32,5 +34,5 @@ def run(p=2000, n=1000, seed=123, fname="figures/sim0_mp_law.pdf"):
     plt.close()
 
 if __name__ == "__main__":
-    run(p=2000, n=1000, seed=123, fname="figures/sim0_mp_law_gamma2.pdf")
-    run(p=1500, n=3000, seed=124, fname="figures/sim0_mp_law_gamma0p5.pdf")
+    run(p=2000, n=1000, seed=123, fname="./figures/sim0_mp_law_gamma2.pdf")
+    run(p=1500, n=3000, seed=124, fname="./figures/sim0_mp_law_gamma0p5.pdf")
