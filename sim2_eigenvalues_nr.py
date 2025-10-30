@@ -16,6 +16,11 @@ def run(p=3000, n=60, alphas=(0.8,0.6), kplot=10, seed=0, prefix="figures/sim2_e
     lam = np.ones(p)
     for idx, a in enumerate(alphas):
         lam[idx] = p**a
+
+    # population spikes and bulk mean
+    spikes = lam[:len(alphas)]
+    bulk_mean = lam[len(alphas):].mean() if len(alphas) < p else 0.0
+
     Z = rng.standard_normal((p, n))
     X = (np.sqrt(lam)[:, None] * Z)
     SD = dual_cov(X)
@@ -23,9 +28,6 @@ def run(p=3000, n=60, alphas=(0.8,0.6), kplot=10, seed=0, prefix="figures/sim2_e
 
     # Noise-reduced eigenvalues
     tilde = np.array([nr_lambda(hat_lams, j) for j in range(n-1)] + [0.0])
-
-    # Population mean of non-spiked eigenvalues (noise floor)
-    mu = lam[len(alphas):].mean() if len(alphas) < p else 0.0
 
     # True population eigenvalues (spikes + 1’s)
     true_lams = np.concatenate([lam[:n], np.ones(max(0, n - len(lam)))])
@@ -35,17 +37,31 @@ def run(p=3000, n=60, alphas=(0.8,0.6), kplot=10, seed=0, prefix="figures/sim2_e
 
     fig, ax1 = plt.subplots(figsize=(6.4, 4.2))
 
-    # Primary axis: sample and NR eigenvalues
-    ax1.plot(jidx, hat_lams[:kplot], "o-", label=r"$\hat\lambda_j$ (naïve)")
-    ax1.plot(jidx, tilde[:kplot], "x-", label=r"$\tilde\lambda_j$ (NR)")
-    ax1.plot(jidx, true_lams[:kplot], "s--", color="tab:green", label=r"true $\lambda_j$")
-    ax1.set_xlabel("component $j$")
-    ax1.set_ylabel("eigenvalue")
+    # Plot sample, NR, and true eigenvalues
+    ax1.plot(jidx, hat_lams[:kplot], "o-", label=r"Sample $\hat\lambda_j$ (naive)")
+    ax1.plot(jidx, tilde[:kplot], "x-", label=r"Noise-reduced $\tilde\lambda_j$")
+    ax1.plot(jidx, true_lams[:kplot], "s--", color="tab:green", label=r"True $\lambda_j$")
+
+    # Axis labels and legend
+    ax1.set_xlabel("Eigenvalue index $j$")
+    ax1.set_ylabel("Eigenvalue magnitude")
+    ax1.set_title(f"Noise-reduction vs naive eigenvalues (p={p}, n={n})")
     ax1.legend(frameon=False, loc="upper right")
-    # Title and save
-    plt.title(f"Noise-reduction vs naive eigenvalues (p={p}, n={n})")
+
+    # ---- Footer summary under the x-axis ----
+    spike_text = ", ".join(
+        [rf"$\alpha_{i+1}$={a:.2f}, $\lambda_{i+1}=p^{{\alpha_i}}$={spikes[i]:.1f}"
+         for i, a in enumerate(alphas)]
+    )
+    footer_text = (
+        rf"{len(alphas)} spikes | bulk mean $\mu\approx{bulk_mean:.2f}$ | " + spike_text
+    )
+
+    # Place footer centered below plot
+    fig.text(0.5, -0.05, footer_text, ha='center', va='top', fontsize=9)
+
     fig.tight_layout()
-    plt.savefig(prefix+".pdf", bbox_inches="tight")
+    plt.savefig(prefix + ".pdf", bbox_inches="tight")
     plt.close()
 
 if __name__ == "__main__":
